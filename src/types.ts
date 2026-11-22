@@ -34,6 +34,7 @@ export type Settings = {
   squadSize: number
   auctionPoolSize: number
   openingPriceMultipliers: OpeningPriceMultipliers
+  categoryCounts?: Record<PlayerCategory, number>
 }
 export type Purchase = { playerId: string; price: number }
 export type PlayerPlacement = {
