@@ -1,6 +1,14 @@
-# FootBid — Multiplayer Auction Game v0.8
+# FootBid — Multiplayer Auction Game v0.9
 
 FootBid is a mobile-first, room-based football auction PWA. Contestants join from separate devices through Supabase. Every room has a shared player pool, real-time bids, private team ownership and visible squad tactics.
+
+## What's new in v0.9
+
+- Auction pool selection is exact: organisers enter Current, Icon and Hero counts, and those numbers must sum to the selected pool size. Players are sampled randomly within each category; no proportional category split is assumed.
+- Setup fields use mobile-friendly text/numeric keyboards instead of spinner controls. Squad size uses three tap buttons (11 / 15 / 18).
+- Bidding uses preset buttons: Opening Bid, +1, +10, +20, +50 and +100. Every amount is checked against current bid and remaining team budget both in the interface and in the database RPC.
+- Organisers can kick any non-host contestant. The database removes the team's membership and team record, removes them from the active lot, and safely reopens a lot if the removed contestant was the highest bidder. If no active contestants remain, the lot is marked unsold and the auction advances.
+- Contestants can use Leave to release their room seat and membership. A network drop or browser closure does not call Leave, so the same anonymous session can reconnect using its persisted browser session and room membership.
 
 ## What's new in v0.8
 
@@ -10,7 +18,7 @@ FootBid is a mobile-first, room-based football auction PWA. Contestants join fro
   - Defensive central lane = CB; wide defensive lanes = LB/RB.
   - Deeper central midfield = DMF; central midfield = CMF; advanced midfield = AMF; wide midfield = LMF/RMF.
   - Forward central lanes = SS/CF; left/right attacking lanes = LWF/RWF.
-- The role dropdown offers all 13 roles. The player's natural roles are tagged `NATURAL`; other assignments are labelled `OUT OF POSITION`.
+- The role selector offers all 13 roles. The player's natural roles are tagged `NATURAL`; other assignments are labelled `OUT OF POSITION`.
 - Out-of-position assignments remain legal but reduce Starting XI Strength and Tactical Balance. A goalkeeper placed at CF is valid for a user's tactical choice, but receives a very low position-fit score.
 - The results now include a team-by-team positional-impact report showing player, listed database position, assigned role and fit percentage.
 - Organisers can configure team budget, squad size (11, 15 or 18), auction pool size (90–489), and independent Current / Icon / Hero opening-price multipliers (0.5×–3.0×). Each multiplier is applied to the player's dataset `base_price` and rounded to a whole point.
@@ -26,7 +34,7 @@ FootBid is a mobile-first, room-based football auction PWA. Contestants join fro
 
 ## 2. Update your Windows project
 
-1. Extract this ZIP into a new folder, `footbid_base_v08`.
+1. Extract this ZIP into a new folder, `footbid_base_v09`.
 2. Open the new folder in VS Code.
 3. Copy your existing `.env` file into the new folder, alongside `package.json`. Credentials are deliberately excluded from this ZIP.
 4. Open the integrated terminal and run:
@@ -41,7 +49,11 @@ FootBid is a mobile-first, room-based football auction PWA. Contestants join fro
 
 Do not put a Supabase service-role key in the browser or `.env`.
 
-## 3. Apply the Supabase v0.8 migration
+## 3. Apply the Supabase migrations
+
+Your existing database has v0.7 and v0.8. Apply the new `supabase/migrations/v0.9_mobile_controls_host_kick.sql` once after those migrations. It validates exact Current / Icon / Hero counts and adds the host kick and contestant leave RPCs. Do not rerun earlier migrations.
+
+### v0.8 migration (only if not yet applied)
 
 Your existing Supabase project already contains the v0.7 schema and migration. Apply this new migration once:
 
@@ -56,9 +68,9 @@ Do not rerun the original `schema.sql` or the v0.7 migration. This migration pre
 
 - Team budget: organiser-configured, minimum 500 points.
 - Squad size: 11, 15 or 18 players. An 11-player auction team has no bench; 15-player teams have 4 bench places; 18-player teams have 7.
-- Player pool: organiser chooses 90–489 records from the 489-player candidate database.
+- Player pool: organiser chooses exact Current / Icon / Hero counts; those values must add up to 90–489 records and cannot exceed available records in each category.
 - Category opening price: `player.base_price × category multiplier`, rounded to the nearest whole point. Default multipliers are 1.0× for Current, Icon and Hero. The organiser can change each independently between 0.5× and 3.0×.
-- A room checks that the selected pool has enough players for all configured squads.
+- A room checks that the selected pool has enough players for all configured squads and that the category counts exactly match the uploaded pool.
 
 ## 5. Tactical role mapping and scoring
 
@@ -85,11 +97,12 @@ Natural position matches score 100% suitability. Different positions on the same
 - The organiser starts the first player after all contestants join.
 - A player's opening bid uses the category-adjusted dataset base price.
 - Contestants can enter any whole-number bid at or above the current minimum.
-- The highest bidder cannot quit while leading.
+- The highest bidder cannot quit while leading. The organiser can kick a contestant; if the removed contestant is leading the current lot, the lot reopens at its opening price for the remaining active teams.
 - If all competitors quit, the highest bidder wins at the current bid.
 - If all contestants quit before any bid, the player is unsold.
 - Sale and unsold events are stored with the next-player announcement and displayed as a popup across devices.
 - The next player advances automatically after a sale or unsold result; no one clicks Reveal Next Player between lots.
+- A contestant who deliberately chooses Leave is removed from the room and their seat is released, unless they are currently the highest bidder. In that case, they must be outbid first or the organiser can kick them (which reopens the lot). A disconnected browser that has not chosen Leave retains its anonymous session and team membership so it can reconnect.
 
 ## 7. Project structure
 
