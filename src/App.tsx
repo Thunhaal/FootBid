@@ -285,7 +285,7 @@ function App(){
     return <Shell><section className="connect-card">
       <div className="eyebrow"><span className="eyebrow-line"/> MULTIPLAYER BACKEND REQUIRED</div>
       <h1>Bring your<br/><em>crew online.</em></h1>
-      <p>FootBid v0.8 uses the uploaded 489-player dataset and flexible tactical positioning. Add your Supabase project settings to enable room codes, private team control and live updates across phones.</p>
+      <p>FootBid v0.9 uses mobile-friendly auction controls and flexible tactical positioning. Add your Supabase project settings to enable room codes, private team control and live updates across phones.</p>
       <div className="connect-steps"><b>1.</b> Copy <code>.env.example</code> to <code>.env</code><b>2.</b> Add your Supabase URL and anon key<b>3.</b> Run <code>supabase/schema.sql</code> in the SQL Editor.</div>
       <p className="muted">Do not put a service-role key in the browser. Use the project publishable/anon key only.</p>
     </section></Shell>
@@ -422,7 +422,7 @@ function App(){
           </section>
           <section className="side-card market-card"><div className="side-card-head"><span>AUCTION RULES</span><small>ACTIVE</small></div>
             <div className="market-stat"><span>Squad size</span><b>{room.settings.squadSize}</b></div>
-            <div className="market-stat"><span>Bid rule</span><b>Enter any higher whole-number bid</b></div>
+            <div className="market-stat"><span>Bid controls</span><b>Opening / +1 / +10 / +20 / +50 / +100</b></div>
             <div className="market-stat"><span>Player source</span><b>489-player database</b></div>
             <div className="market-stat"><span>Opening price</span><b>{currentPlayer?`${room.settings.openingPriceMultipliers?.[currentPlayer.category]??1}× ${currentPlayer.category} base price`:'Category-adjusted base price'}</b></div>
             <div className="market-stat"><span>Categories</span><b>Current · Icon · Hero</b></div>
