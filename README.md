@@ -18,7 +18,7 @@ FootBid is a mobile-first, room-based football auction PWA. Contestants join fro
   - Defensive central lane = CB; wide defensive lanes = LB/RB.
   - Deeper central midfield = DMF; central midfield = CMF; advanced midfield = AMF; wide midfield = LMF/RMF.
   - Forward central lanes = SS/CF; left/right attacking lanes = LWF/RWF.
-- The role dropdown offers all 13 roles. The player's natural roles are tagged `NATURAL`; other assignments are labelled `OUT OF POSITION`.
+- The role selector offers all 13 roles. The player's natural roles are tagged `NATURAL`; other assignments are labelled `OUT OF POSITION`.
 - Out-of-position assignments remain legal but reduce Starting XI Strength and Tactical Balance. A goalkeeper placed at CF is valid for a user's tactical choice, but receives a very low position-fit score.
 - The results now include a team-by-team positional-impact report showing player, listed database position, assigned role and fit percentage.
 - Organisers can configure team budget, squad size (11, 15 or 18), auction pool size (90–489), and independent Current / Icon / Hero opening-price multipliers (0.5×–3.0×). Each multiplier is applied to the player's dataset `base_price` and rounded to a whole point.
@@ -34,7 +34,7 @@ FootBid is a mobile-first, room-based football auction PWA. Contestants join fro
 
 ## 2. Update your Windows project
 
-1. Extract this ZIP into a new folder, `footbid_base_v08`.
+1. Extract this ZIP into a new folder, `footbid_base_v09`.
 2. Open the new folder in VS Code.
 3. Copy your existing `.env` file into the new folder, alongside `package.json`. Credentials are deliberately excluded from this ZIP.
 4. Open the integrated terminal and run:
@@ -53,7 +53,7 @@ Do not put a Supabase service-role key in the browser or `.env`.
 
 Your existing database has v0.7 and v0.8. Apply the new `supabase/migrations/v0.9_mobile_controls_host_kick.sql` once after those migrations. It validates exact Current / Icon / Hero counts and adds the host kick and contestant leave RPCs. Do not rerun earlier migrations.
 
-### v0.8 migration (existing deployments only)
+### v0.8 migration (only if not yet applied)
 
 Your existing Supabase project already contains the v0.7 schema and migration. Apply this new migration once:
 
@@ -102,7 +102,7 @@ Natural position matches score 100% suitability. Different positions on the same
 - If all contestants quit before any bid, the player is unsold.
 - Sale and unsold events are stored with the next-player announcement and displayed as a popup across devices.
 - The next player advances automatically after a sale or unsold result; no one clicks Reveal Next Player between lots.
-- A contestant who deliberately chooses Leave is removed from the room and their seat is released. A disconnected browser that has not chosen Leave retains its anonymous session and team membership so it can reconnect.
+- A contestant who deliberately chooses Leave is removed from the room and their seat is released, unless they are currently the highest bidder. In that case, they must be outbid first or the organiser can kick them (which reopens the lot). A disconnected browser that has not chosen Leave retains its anonymous session and team membership so it can reconnect.
 
 ## 7. Project structure
 
