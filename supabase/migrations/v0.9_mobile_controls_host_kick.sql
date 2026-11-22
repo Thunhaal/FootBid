@@ -79,6 +79,10 @@ BEGIN
 
   v_team_name := v_team.team_name;
   v_was_leading := (v_room.highest_bidder_team_id=p_team_id);
+
+  IF NOT p_host_override AND v_was_leading THEN
+    RAISE EXCEPTION 'You cannot leave the room while your team is the highest bidder. Ask the organiser to kick you if you need to exit immediately.';
+  END IF;
   v_active := array_remove(coalesce(v_room.active_team_ids,'{}'::uuid[]),p_team_id);
   v_player_name := coalesce(v_room.current_player->>'name','');
 
