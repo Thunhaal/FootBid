@@ -32,13 +32,24 @@ export function categoryCounts(pool:Player[]):Record<PlayerCategory,number>{
   return Object.fromEntries(CATEGORY_ORDER.map(category=>[category,pool.filter(p=>p.category===category).length])) as Record<PlayerCategory,number>
 }
 export function shuffleItems<T>(items:T[]):T[]{return shuffleInPlace(items)}
-export function drawAuctionPool(size=STARTER_POOL_SIZE):Player[]{
-  const target=Math.max(STARTER_POOL_SIZE,Math.min(players.length,Math.floor(size)))
-  const quotas=categoryQuotas(target)
+export function drawAuctionPool(
+  size=STARTER_POOL_SIZE,
+  requestedCounts:Record<PlayerCategory,number>=categoryQuotas(size)
+):Player[]{
+  const target=Math.floor(size)
+  if(!Number.isInteger(target)||target<STARTER_POOL_SIZE||target>players.length){
+    throw new Error('Auction size must be between '+STARTER_POOL_SIZE+' and '+players.length+'.')
+  }
+  const total=CATEGORY_ORDER.reduce((sum,category)=>sum+requestedCounts[category],0)
+  if(total!==target)throw new Error('Current, Icon and Hero counts must add up to exactly '+target+'.')
   const selected:Player[]=[]
   for(const category of CATEGORY_ORDER){
-    const bucket=shuffleInPlace(players.filter(player=>player.category===category))
-    selected.push(...bucket.slice(0,quotas[category]))
+    const count=requestedCounts[category]
+    const available=players.filter(player=>player.category===category)
+    if(!Number.isInteger(count)||count<0||count>available.length){
+      throw new Error(category+' count must be between 0 and '+available.length+'.')
+    }
+    selected.push(...shuffleInPlace(available).slice(0,count))
   }
   return shuffleInPlace(selected)
 }
