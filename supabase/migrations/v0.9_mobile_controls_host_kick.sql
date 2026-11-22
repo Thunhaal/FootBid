@@ -363,6 +363,9 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.fb_host_kick_team(text,uuid) FROM public,anon;
+REVOKE ALL ON FUNCTION public.fb_leave_room(text) FROM public,anon;
+REVOKE ALL ON FUNCTION public.fb_create_room(text[],jsonb,jsonb,text[]) FROM public,anon;
 GRANT EXECUTE ON FUNCTION public.fb_create_room(text[],jsonb,jsonb,text[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.fb_host_kick_team(text,uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.fb_leave_room(text) TO authenticated;
