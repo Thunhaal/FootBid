@@ -28,7 +28,7 @@ function App(){
   const [error,setError]=useState('')
   const [notice,setNotice]=useState('')
   const [teamNames,setTeamNames]=useState(defaultTeamNames)
-  const [budget,setBudget]=useState(1800)
+  const [budget,setBudget]=useState('1800')
   const [squadSize,setSquadSize]=useState(18)
   const initialCategoryCounts=categoryQuotas(STARTER_POOL_SIZE)
   const [categorySelection,setCategorySelection]=useState<Record<PlayerCategory,string>>({
@@ -156,7 +156,7 @@ function App(){
       const names=teamNames.split(/[\n,]/).map(s=>s.trim()).filter(Boolean)
       if(names.length<2||names.length>8)throw new Error('Enter between 2 and 8 team names.')
       if(new Set(names.map(s=>s.toLowerCase())).size!==names.length)throw new Error('Team names must be unique.')
-      if(budget<500)throw new Error('Set a team budget of at least 500 points.')
+      if(!Number.isInteger(Number(budget))||Number(budget)<500)throw new Error('Set a whole-number team budget of at least 500 points.')
       if(![11,15,18].includes(squadSize))throw new Error('Choose a squad size of 11, 15 or 18 players.')
       const counts=selectedCategoryQuota
       for(const category of CATEGORY_ORDER){
@@ -166,7 +166,7 @@ function App(){
       if(poolSize<names.length*squadSize)throw new Error('This room needs at least '+(names.length*squadSize)+' players for '+names.length+' full squads. Increase your category counts.')
       if(CATEGORY_ORDER.some(category=>!Number.isFinite(numericPriceMultipliers[category])||numericPriceMultipliers[category]<0.5||numericPriceMultipliers[category]>3))throw new Error('Each category price multiplier must be between 0.5 and 3.0.')
       const pool=drawAuctionPool(poolSize,counts)
-      const settings:Settings={budget,squadSize,auctionPoolSize:pool.length,categoryCounts:counts,openingPriceMultipliers:numericPriceMultipliers}
+      const settings:Settings={budget:Number(budget),squadSize,auctionPoolSize:pool.length,categoryCounts:counts,openingPriceMultipliers:numericPriceMultipliers}
       const created=await createOnlineRoom({teamNames:names,settings,pool,queue:shuffleQueue(pool)})
       await refresh(created.room_code)
       setNotice(`Room ${created.room_code} created. You control ${names[0]}. Share the code with the other contestants.`)
@@ -310,7 +310,7 @@ function App(){
           <label className="field-label">TEAM NAMES <span>2–8 teams · one name per line · first team is the organiser</span></label>
           <textarea className="team-input" rows={4} value={teamNames} onChange={e=>setTeamNames(e.target.value)}/>
           <div className="field-grid two">
-            <label className="field-label">TEAM BUDGET<input type="text" inputMode="numeric" pattern="[0-9]*" value={budget} onChange={e=>setBudget(Number(e.target.value.replace(/\D/g,''))||0)}/></label>
+            <label className="field-label">TEAM BUDGET<input type="text" inputMode="numeric" pattern="[0-9]*" value={budget} onChange={e=>setBudget(e.target.value.replace(/\D/g,''))}/></label>
             <div className="squad-size-field"><span className="field-label">SQUAD SIZE</span><div className="squad-size-buttons">{[11,15,18].map(size=><button type="button" key={size} className={squadSize===size?'selected':''} onClick={()=>setSquadSize(size)}>{size}</button>)}</div><small>PLAYERS PER TEAM</small></div>
           </div>
           <div className="category-count-controls">
