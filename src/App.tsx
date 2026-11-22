@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type DragEvent, type MouseEvent } from 'react'
 import { ArrowRight, ClipboardCopy, ShieldCheck } from 'lucide-react'
 import { players } from './data/players'
-import { drawAuctionPool, shuffleQueue, STARTER_POOL_SIZE, CATEGORY_ORDER, categoryCounts, categoryQuotas } from './lib/pool'
+import { drawAuctionPool, shuffleQueue, STARTER_POOL_SIZE, CATEGORY_ORDER, categoryCounts } from './lib/pool'
 import { getPlayer } from './lib/game'
 import { autoPlacePlayers, defaultRole, eligibleRoles, formationLabel, roleLabel, roleInitialPosition, roleFromCoordinates, tacticalRoles } from './lib/tactics'
 import { calculateTeamResults } from './lib/results'
@@ -30,7 +30,7 @@ function App(){
   const [teamNames,setTeamNames]=useState(defaultTeamNames)
   const [budget,setBudget]=useState('1800')
   const [squadSize,setSquadSize]=useState(18)
-  const initialCategoryCounts=categoryQuotas(STARTER_POOL_SIZE)
+  const initialCategoryCounts={Current:30,Icon:30,Hero:30}
   const [categorySelection,setCategorySelection]=useState<Record<PlayerCategory,string>>({
     Current:String(initialCategoryCounts.Current),Icon:String(initialCategoryCounts.Icon),Hero:String(initialCategoryCounts.Hero)
   })
