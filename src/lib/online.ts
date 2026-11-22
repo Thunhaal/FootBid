@@ -129,3 +129,14 @@ export async function subscribeRoom(code:string,roomId:string,onChange:()=>void)
     .subscribe()
   return ()=>{void client.removeChannel(channel)}
 }
+
+export async function kickOnlineTeam(code:string,teamId:string){
+  const {error}=await requireClient().rpc('fb_host_kick_team',{
+    p_room_code:code.toUpperCase(),p_team_id:teamId
+  })
+  if(error)throw error
+}
+export async function leaveOnlineRoom(code:string){
+  const {error}=await requireClient().rpc('fb_leave_room',{p_room_code:code.toUpperCase()})
+  if(error)throw error
+}
