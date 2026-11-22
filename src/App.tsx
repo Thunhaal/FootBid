@@ -7,10 +7,10 @@ import { autoPlacePlayers, defaultRole, eligibleRoles, formationLabel, roleLabel
 import { calculateTeamResults } from './lib/results'
 import {
   createOnlineRoom, ensureAnonymousSession, fetchRoom, getRoomLobby, joinOnlineRoom,
-  placeOnlineBid, quitOnlineLot, startNextOnlinePlayer, subscribeRoom, submitMyTeam, updateMyTeam
+  kickOnlineTeam, leaveOnlineRoom, placeOnlineBid, quitOnlineLot, startNextOnlinePlayer, subscribeRoom, submitMyTeam, updateMyTeam
 } from './lib/online'
 import { hasSupabaseConfig } from './lib/supabase'
-import type { Player, PlayerPlacement, RoomState, Settings, Team, TacticalRole } from './types'
+import type { Player, PlayerCategory, PlayerPlacement, RoomState, Settings, Team, TacticalRole } from './types'
 import type { TeamResult } from './lib/results'
 
 const fmt=(n:number)=>`${Math.round(n).toLocaleString('en-IN')} pts`
@@ -30,12 +30,14 @@ function App(){
   const [teamNames,setTeamNames]=useState(defaultTeamNames)
   const [budget,setBudget]=useState(1800)
   const [squadSize,setSquadSize]=useState(18)
-  const [poolSize,setPoolSize]=useState(STARTER_POOL_SIZE)
-  const [priceMultipliers,setPriceMultipliers]=useState({Current:1,Icon:1,Hero:1})
+  const initialCategoryCounts=categoryQuotas(STARTER_POOL_SIZE)
+  const [categorySelection,setCategorySelection]=useState<Record<PlayerCategory,string>>({
+    Current:String(initialCategoryCounts.Current),Icon:String(initialCategoryCounts.Icon),Hero:String(initialCategoryCounts.Hero)
+  })
+  const [priceMultipliers,setPriceMultipliers]=useState<Record<PlayerCategory,string>>({Current:'1.0',Icon:'1.0',Hero:'1.0'})
   const [joinCode,setJoinCode]=useState('')
   const [lobbyInfo,setLobbyInfo]=useState<Awaited<ReturnType<typeof getRoomLobby>>|null>(null)
   const [room,setRoom]=useState<RoomState|null>(null)
-  const [bidAmount,setBidAmount]=useState('')
   const [activeView,setActiveView]=useState<'auction'|'squads'|'results'>('auction')
   const [editingLineup,setEditingLineup]=useState<PlayerPlacement[]>([])
   const [actionBusy,setActionBusy]=useState(false)
@@ -50,7 +52,9 @@ function App(){
   const highestBidTeam=room?.teams.find(team=>team.id===room.highestBidderTeamId)
   const currentMinimum=room?(room.highestBidderTeamId?room.currentBid+1:room.currentBid):0
   const categoryCount=useMemo(()=>categoryCounts(players),[])
-  const selectedCategoryQuota=useMemo(()=>categoryQuotas(poolSize),[poolSize])
+  const selectedCategoryQuota={Current:Number(categorySelection.Current||0),Icon:Number(categorySelection.Icon||0),Hero:Number(categorySelection.Hero||0)}
+  const poolSize=selectedCategoryQuota.Current+selectedCategoryQuota.Icon+selectedCategoryQuota.Hero
+  const numericPriceMultipliers={Current:Number(priceMultipliers.Current),Icon:Number(priceMultipliers.Icon),Hero:Number(priceMultipliers.Hero)}
   const allTeamsSubmitted=Boolean(room && room.status==='finished' && room.teams.length>0 &&
     room.teams.every(team=>team.isSeated && team.submitted))
   const results=useMemo(()=>room?calculateTeamResults(room.teams,room.poolPlayers,room.settings.squadSize):[],[room?.teams,room?.poolPlayers,room?.settings.squadSize])
@@ -84,11 +88,6 @@ function App(){
     }).then(fn=>{if(cancelled)fn();else cleanup=fn}).catch(e=>setError(message(e)))
     return ()=>{cancelled=true;cleanup?.()}
   },[room?.id,room?.code])
-
-  useEffect(()=>{
-    if(!room||room.status!=='live'||!currentPlayer||!myTeam){setBidAmount('');return}
-    setBidAmount(String(myIsHighest?'':currentMinimum))
-  },[room?.id,room?.status,room?.currentPlayer?.id,room?.currentBid,room?.highestBidderTeamId,room?.myTeamId])
 
   useEffect(()=>{
     if(!room)return
@@ -159,10 +158,15 @@ function App(){
       if(new Set(names.map(s=>s.toLowerCase())).size!==names.length)throw new Error('Team names must be unique.')
       if(budget<500)throw new Error('Set a team budget of at least 500 points.')
       if(![11,15,18].includes(squadSize))throw new Error('Choose a squad size of 11, 15 or 18 players.')
-      if(poolSize<STARTER_POOL_SIZE||poolSize>players.length)throw new Error(`Choose between ${STARTER_POOL_SIZE} and ${players.length} players.`)
-      if(poolSize<names.length*squadSize)throw new Error(`This room needs at least ${names.length*squadSize} players for ${names.length} full squads. Increase the player pool.`)
-      const pool=drawAuctionPool(poolSize)
-      const settings:Settings={budget,squadSize,auctionPoolSize:pool.length,openingPriceMultipliers:priceMultipliers}
+      const counts=selectedCategoryQuota
+      for(const category of CATEGORY_ORDER){
+        if(!Number.isInteger(counts[category])||counts[category]<0||counts[category]>categoryCount[category])throw new Error(category+' count must be between 0 and '+categoryCount[category]+'.')
+      }
+      if(poolSize<STARTER_POOL_SIZE||poolSize>players.length)throw new Error('Choose at least '+STARTER_POOL_SIZE+' players and no more than '+players.length+'.')
+      if(poolSize<names.length*squadSize)throw new Error('This room needs at least '+(names.length*squadSize)+' players for '+names.length+' full squads. Increase your category counts.')
+      if(CATEGORY_ORDER.some(category=>!Number.isFinite(numericPriceMultipliers[category])||numericPriceMultipliers[category]<0.5||numericPriceMultipliers[category]>3))throw new Error('Each category price multiplier must be between 0.5 and 3.0.')
+      const pool=drawAuctionPool(poolSize,counts)
+      const settings:Settings={budget,squadSize,auctionPoolSize:pool.length,categoryCounts:counts,openingPriceMultipliers:numericPriceMultipliers}
       const created=await createOnlineRoom({teamNames:names,settings,pool,queue:shuffleQueue(pool)})
       await refresh(created.room_code)
       setNotice(`Room ${created.room_code} created. You control ${names[0]}. Share the code with the other contestants.`)
@@ -202,15 +206,20 @@ function App(){
     }catch(e){setError(message(e))}
     finally{setActionBusy(false)}
   }
-  async function placeBid(){
-    if(!room||!bidAmount.trim())return
-    const amount=Number(bidAmount)
-    if(!Number.isInteger(amount)||amount<currentMinimum){setError(`Enter a whole-number bid of at least ${currentMinimum} points.`);return}
-    await runAction(()=>placeOnlineBid(room.code,amount),`Bid submitted: ${fmt(amount)}.`)
+  async function placeBid(amount:number){
+    if(!room||!myTeam)return
+    if(!Number.isInteger(amount)||amount<currentMinimum){setError('The next valid bid is '+fmt(currentMinimum)+' or higher.');return}
+    if(amount>myTeam.budgetRemaining){setError('Your team has only '+fmt(myTeam.budgetRemaining)+' left. Choose a smaller increment.');return}
+    await runAction(()=>placeOnlineBid(room.code,amount),'Bid submitted: '+fmt(amount)+'.')
   }
   async function quitLot(){
     if(!room||!myTeam||myIsHighest||!myIsActive)return
     await runAction(()=>quitOnlineLot(room.code),'Your team has quit this player auction.')
+  }
+  async function kickTeam(teamId:string,teamName:string){
+    if(!room||!room.isHost)return
+    if(!window.confirm('Remove '+teamName+' from this auction? Their team and seat will be removed.'))return
+    await runAction(()=>kickOnlineTeam(room.code,teamId),teamName+' was removed from the room.')
   }
   async function revealNext(){
     if(!room)return
@@ -260,6 +269,11 @@ function App(){
     await runAction(()=>submitMyTeam(room.code),'Your final team has been submitted and locked.')
   }
   async function leaveRoom(){
+    if(room&&!room.isHost){
+      setActionBusy(true);setError('')
+      try{await leaveOnlineRoom(room.code)}catch(e){setError(message(e));setActionBusy(false);return}
+      finally{setActionBusy(false)}
+    }
     localStorage.removeItem('footbid-v08-room')
     setRoom(null);setLobbyInfo(null);setError('');setNotice('')
   }
@@ -296,18 +310,24 @@ function App(){
           <label className="field-label">TEAM NAMES <span>2–8 teams · one name per line · first team is the organiser</span></label>
           <textarea className="team-input" rows={4} value={teamNames} onChange={e=>setTeamNames(e.target.value)}/>
           <div className="field-grid two">
-            <label className="field-label">TEAM BUDGET<input type="number" min="500" value={budget} onChange={e=>setBudget(Number(e.target.value))}/></label>
-            <label className="field-label">SQUAD SIZE<select value={squadSize} onChange={e=>setSquadSize(Number(e.target.value))}><option value={11}>11 players</option><option value={15}>15 players</option><option value={18}>18 players</option></select></label>
+            <label className="field-label">TEAM BUDGET<input type="text" inputMode="numeric" pattern="[0-9]*" value={budget} onChange={e=>setBudget(Number(e.target.value.replace(/\D/g,''))||0)}/></label>
+            <div className="squad-size-field"><span className="field-label">SQUAD SIZE</span><div className="squad-size-buttons">{[11,15,18].map(size=><button type="button" key={size} className={squadSize===size?'selected':''} onClick={()=>setSquadSize(size)}>{size}</button>)}</div><small>PLAYERS PER TEAM</small></div>
           </div>
-          <label className="field-label">PLAYERS IN THIS AUCTION <span>90–489 · randomly drawn from your uploaded Current / Icon / Hero database</span>
-            <input type="number" min={90} max={players.length} step={10} value={poolSize} onChange={e=>setPoolSize(Math.max(90,Math.min(players.length,Number(e.target.value)||90)))}/>
-          </label>
+          <div className="category-count-controls">
+            <div className="category-count-heading"><div><b>PLAYERS IN THIS AUCTION</b><span>Set the exact number of Current, Icon and Hero players. No automatic split.</span></div><strong>{poolSize} <small>/ 489</small></strong></div>
+            {CATEGORY_ORDER.map(category=><label className="category-count-row" key={category}>
+              <span className={'category-price-dot category-'+category.toLowerCase()}/><b>{category.toUpperCase()}</b>
+              <span className="category-count-available">Max {categoryCount[category]}</span>
+              <input type="text" inputMode="numeric" pattern="[0-9]*" maxLength={3} value={categorySelection[category]} onChange={e=>setCategorySelection(prev=>({...prev,[category]:e.target.value.replace(/\D/g,'')}))} aria-label={category+' player count'}/>
+            </label>)}
+            <small className="category-count-total">Selected total: {poolSize} players · Minimum 90 · Maximum 489.</small>
+          </div>
           <div className="category-price-controls">
             <div className="category-price-heading"><div><b>CATEGORY OPENING PRICE</b><span>Player dataset base price × your multiplier. Set each category separately.</span></div><small>DEFAULT 1.0×</small></div>
             {(['Current','Icon','Hero'] as const).map(category=><label className="category-price-row" key={category}>
               <span className={`category-price-dot category-${category.toLowerCase()}`}/><b>{category.toUpperCase()}</b>
               <span className="category-price-example">{category==='Current'?'Current players':category==='Icon'?'All-time Icons':'Heroes'}</span>
-              <div><input type="number" min="0.5" max="3" step="0.1" value={priceMultipliers[category]} onChange={e=>setPriceMultipliers(prev=>({...prev,[category]:Math.max(.5,Math.min(3,Number(e.target.value)||.5))}))}/><small>× base price</small></div>
+              <div><input type="text" inputMode="decimal" pattern="[0-9.]*" value={priceMultipliers[category]} onChange={e=>setPriceMultipliers(prev=>({...prev,[category]:e.target.value.replace(/[^0-9.]/g,'')}))}/><small>× base price</small></div>
             </label>)}
           </div>
           <button className="primary-button full" disabled={loading} onClick={createRoom}>{loading?'CREATING ROOM…':'CREATE MULTIPLAYER ROOM'} <ArrowRight size={15}/></button>
@@ -336,6 +356,7 @@ function App(){
       </div>
       {notice&&<div className="notice-banner">{notice}</div>}
       {error&&<div className="error-banner">{error}</div>}
+      <HostKickControls room={room} onKick={kickTeam}/>
       {auctionAnnouncement&&<div className={`auction-announcement ${auctionAnnouncement.kind}`} role="status" aria-live="assertive">
         <button className="announcement-close" onClick={()=>setAuctionAnnouncement(null)} aria-label="Dismiss announcement">×</button>
         <span className="announcement-kicker">{auctionAnnouncement.kind==='sold'?'⚽ PLAYER SOLD':'○ PLAYER UNSOLD'}</span>
@@ -373,12 +394,19 @@ function App(){
             <div className="my-bid-panel">
               <div className="my-bid-title"><span>YOUR TEAM · {myTeam?.teamName}</span><b>{fmt(myTeam?.budgetRemaining??0)} LEFT</b></div>
               {myIsActive?<>
-                <div className="manual-bid-row">
-                  <label className="manual-bid-field">TYPE YOUR BID
-                    <input type="number" min={currentMinimum} step="1" value={bidAmount} disabled={myIsHighest||actionBusy} onChange={e=>setBidAmount(e.target.value)} placeholder="Enter points"/>
-                    <small>{myIsHighest?'You are currently the highest bidder. Wait for another team to raise.':room.highestBidderTeamId?`Next bid must be at least ${fmt(currentMinimum)}.`:`Opening price ${fmt(room.currentBid)}. Any higher whole-number bid is accepted.`}</small>
-                  </label>
-                  <button className="bid-button" disabled={actionBusy||myIsHighest||!bidAmount.trim()} onClick={placeBid}>PLACE BID <ArrowRight size={15}/></button>
+                <div className="quick-bid-panel">
+                  <div className="quick-bid-heading"><b>QUICK BID</b><small>{myIsHighest?'You are leading. Wait for another team to raise.':'Current offer: '+fmt(room.currentBid)+' · choose an increase.'}</small></div>
+                  {!room.highestBidderTeamId&&<button type="button" className="opening-bid-button" disabled={actionBusy||room.currentBid>(myTeam?.budgetRemaining??0)} onClick={()=>placeBid(room.currentBid)}>OPENING BID <strong>{fmt(room.currentBid)}</strong></button>}
+                  <div className="quick-bid-grid">
+                    {[1,10,20,50,100].map(increment=>{
+                      const amount=room.currentBid+increment
+                      const affordable=amount<=(myTeam?.budgetRemaining??0)
+                      return <button type="button" key={increment} disabled={actionBusy||myIsHighest||!affordable} onClick={()=>placeBid(amount)}>
+                        <b>+{increment}</b><small>{amount.toLocaleString('en-IN')} pts</small>
+                      </button>
+                    })}
+                  </div>
+                  <small className="quick-bid-safety">{myIsHighest?'You cannot bid against your own leading offer.':'Your maximum possible bid is '+fmt(myTeam?.budgetRemaining??0)+'.'}</small>
                 </div>
                 <button className="quit-button full-quit" disabled={actionBusy||myIsHighest} onClick={quitLot}>{myIsHighest?'YOU ARE LEADING · QUIT DISABLED':'QUIT THIS PLAYER'}</button>
               </>:<div className="team-out-message">{(myTeam?.purchases.length??0)>=room.settings.squadSize?'Your squad is full. You can watch the remaining auction.':'Your team has quit this player. You can watch the remaining bids, but cannot re-enter this lot.'}</div>}
@@ -556,6 +584,14 @@ function PlayerPanel({player}:{player:Player}){
       <div className="player-attribution"><a href={player.image_file_page_url||player.image_attribution_url} target="_blank" rel="noreferrer">Image source & licence details</a></div>
     </div>
   </div>
+}
+function HostKickControls({room,onKick}:{room:RoomState;onKick:(teamId:string,teamName:string)=>void}){
+  const contestants=room.teams.filter(team=>team.isSeated&&!team.isMine)
+  if(!room.isHost||contestants.length===0)return null
+  return <section className="host-management-card">
+    <div><span className="micro-label">HOST CONTROLS</span><b>Manage contestants</b><small>Remove a disconnected or withdrawn contestant. Their team and seat are removed so the auction can continue.</small></div>
+    <div className="host-kick-list">{contestants.map(team=><div key={team.id}><span>{team.teamName}</span><button type="button" onClick={()=>onKick(team.id,team.teamName)}>KICK OUT</button></div>)}</div>
+  </section>
 }
 function TeamRow({team,room,isLive}:{team:Team;room:RoomState;isLive:boolean}){
   const active=room.activeTeamIds.includes(team.id)
